@@ -7,7 +7,6 @@ from torch import nn
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, models
-from torchvision import datasets, models, transforms
 from dataloader.datasets import ClassificationDataset
 from dataloader.dataloader import get_loader
 from PIL import Image
@@ -63,9 +62,25 @@ def prepare_train_test_val(dir):
     
     return X_train, X_val, Y_train, Y_val
 
+def file_loader_for_testing(file_name):
+    img = Image.open(file_name)
+    imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
+    val_transformation = A.Compose([
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
+        ToTensor(normalize=imagenet_stats)
+            ])
+    if val_transformation:
+        img = val_transformation(**{"image": np.array(img)})["image"]
+    img = img.to('cuda')
+    temp = img.size()
+    img = img.reshape(1, temp[0], temp[1], temp[2])
+
+    return img
+    
+
 def get_loaders(X_train, Y_train, X_val, Y_val, batch):
-    
-    
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
     train_transformation = A.Compose([
         A.Cutout(p=0.5),
