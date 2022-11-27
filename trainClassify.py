@@ -105,7 +105,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Crack Classification')
     parser.add_argument('--batchsize', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 128)')
-    parser.add_argument('--epochs', type=int, default=14, metavar='N',
+    parser.add_argument('--epochs', type=int, default=6, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--feature_extract', type=bool, default=False, metavar='N',
                         help='finetuning the last layer')
