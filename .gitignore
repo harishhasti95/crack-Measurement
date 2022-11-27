@@ -2,3 +2,5 @@ data/
 dataClassification/
 dataset.txt
 models/
+__pycache__/
+dataloader/__pycache__/
