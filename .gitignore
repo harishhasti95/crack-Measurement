@@ -1,5 +1,6 @@
 data/
 dataClassification/
+dataSegmentation/
 dataset.txt
 models/
 ___pycache___/
