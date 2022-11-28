@@ -14,13 +14,7 @@ if __name__ == '__main__':
     
     device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
     
-    # model, inn = initialize_model(args.model_name, num_classes=2, feature_extract=False, use_pretrained=True)
     model = torch.load(args.pretrained)
-    # model_ft = models.resnet18(pretrained=True)
-    # set_parameter_requires_grad(model_ft, False)
-    # num_ftrs = model_ft.fc.in_features
-    # model_ft.fc = nn.Linear(num_ftrs, 2)
-    # model_ft.load(args.pretrained)
     
     for image_name in os.listdir(args.testing_dir):
         test_file = args.testing_dir + image_name

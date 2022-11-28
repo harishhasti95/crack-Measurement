@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import torch, torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -7,12 +8,13 @@ from torch import nn
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, models
-from dataloader.datasets import ClassificationDataset
-from dataloader.dataloader import get_loader
+from dataloader.datasets import ClassificationDataset, SegmentationDataset
+from dataloader.dataloader import get_loader, get_loader_seg
 from PIL import Image
 from numpy import asarray
 import pickle
 import albumentations as A
+from albumentations.pytorch import ToTensorV2
 from albumentations.pytorch.transforms import ToTensor
 
 
@@ -100,6 +102,44 @@ def get_loaders(X_train, Y_train, X_val, Y_val, batch):
     
     return train_loader, val_loader
 
+def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, height, width, batch):
+    imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
+    train_transform = A.Compose([
+        A.Resize(height=height, width=width),
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
+        ToTensor(normalize=imagenet_stats)
+            ])
+        
+    val_transform = A.Compose([
+        A.Resize(height=height, width=width),
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
+        ToTensor(normalize=imagenet_stats)
+            ])  
+    
+    # channel_means = [0.485, 0.456, 0.406]
+    # channel_stds  = [0.229, 0.224, 0.225]
+    # train_transform = transforms.Compose([transforms.ToTensor(),
+    #                                  transforms.Normalize(channel_means, channel_stds)])
+
+    # val_transform = transforms.Compose([transforms.ToTensor(),
+    #                                transforms.Normalize(channel_means, channel_stds)])
+
+    mask_transform = A.Compose([A.Resize(height=height, width=width), ToTensor()])
+    
+    train_dataset = SegmentationDataset(train_files, train_masks, train_transform, mask_transform)
+    train_loader = get_loader_seg(dataset=train_dataset,batch_size=batch,shuffle=True)
+    # train_loader = get_loader(train_dataset, batch_size=batch, shuffle=True, collate_fn=collate_fn())
+
+    val_dataset = SegmentationDataset(val_files, val_masks, val_transform, mask_transform)
+    val_loader = get_loader_seg(dataset=train_dataset,batch_size=batch,shuffle=True)
+    # val_loader = get_loader(val_dataset, batch_size=batch, shuffle=True)
+    
+    return train_loader, val_loader
+
 def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
     # Initialize these variables which will be set in this if statement. Each of these
     #   variables is model specific.
@@ -171,8 +211,56 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
 
     return model_ft, input_size
 
-
 def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
+            
+            
+def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
+    print("=> Saving checkpoint")
+    torch.save(state, filename)
+
+def load_checkpoint(checkpoint, model):
+    print("=> Loading checkpoint")
+    model.load_state_dict(checkpoint["state_dict"])
+    
+def check_accuracy(loader, model, device="cuda"):
+    num_correct = 0
+    num_pixels = 0
+    dice_score = 0
+    model.eval()
+
+    with torch.no_grad():
+        for x, y in loader:
+            x = x.to(device)
+            y = y.to(device).unsqueeze(1)
+            preds = torch.sigmoid(model(x))
+            preds = (preds > 0.5).float()
+            num_correct += (preds == y).sum()
+            num_pixels += torch.numel(preds)
+            dice_score += (2 * (preds * y).sum()) / (
+                (preds + y).sum() + 1e-8
+            )
+
+    print(
+        f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
+    )
+    print(f"Dice score: {dice_score/len(loader)}")
+    model.train()
+
+def save_predictions_as_imgs(
+    loader, model, folder="saved_images/", device="cuda"
+):
+    model.eval()
+    for idx, (x, y) in enumerate(loader):
+        x = x.to(device=device)
+        with torch.no_grad():
+            preds = torch.sigmoid(model(x))
+            preds = (preds > 0.5).float()
+        torchvision.utils.save_image(
+            preds, f"{folder}/pred_{idx}.png"
+        )
+        torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
+
+    model.train()

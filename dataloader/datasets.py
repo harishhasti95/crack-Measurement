@@ -23,15 +23,26 @@ class ClassificationDataset(Dataset):
         return len(self.img_dir)
 
 class SegmentationDataset(Dataset):
-    def __init__(self, imgages_dir, masks_dir, transform_function = None):
+    def __init__(self, imgages_dir, masks_dir, transform_function_image, transform_function_mask):
         self.imgages_dir = imgages_dir
         self.masks_dir = masks_dir
-        self.transform_function = transform_function
+        self.transform_function_image = transform_function_image
+        self.transform_function_mask = transform_function_mask
         self.images = os.listdir(imgages_dir)
-        
-        
+        self.masks = os.listdir(masks_dir)
     def __len__(self):
         return len(self.images)
-    def __getitem__(self, index):
-        image_dir = os.path.join(self.imgages_dir, self.images[index])
-        mask_dir = os.path.join(self.masks_dir, self)
+    def __getitem__(self, i):
+        image_dir = os.path.join(self.imgages_dir, self.images[i])
+        mask_dir = os.path.join(self.masks_dir, self.masks[i])
+            
+        image = np.array(Image.open(image_dir).convert("RGB"))
+        mask = np.array(Image.open(mask_dir).convert("L"), dtype=np.float32)
+        mask[mask == 255.0] = 1.0
+
+        if self.transform_function_image is not None and self.transform_function_mask is not None:
+            image = self.transform_function_image(image=image)["image"]
+            mask = self.transform_function_mask(image=mask)["image"]
+            
+
+        return image, mask
