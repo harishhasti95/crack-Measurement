@@ -80,7 +80,26 @@ def file_loader_for_testing(file_name):
     img = img.reshape(1, temp[0], temp[1], temp[2])
 
     return img
-    
+
+
+def file_loader_for_testing_segmentation(file_name):
+    img = Image.open(file_name)
+    imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
+    val_transformation = A.Compose([
+        A.Resize(height=256, width=256),
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
+        ToTensor(normalize=imagenet_stats)
+            ])  
+    if val_transformation:
+        img = val_transformation(**{"image": np.array(img)})["image"]
+    img = img.to('cuda')
+    temp = img.size()
+    img = img.reshape(1, temp[0], temp[1], temp[2])
+
+    return img
+        
 
 def get_loaders(X_train, Y_train, X_val, Y_val, batch):
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}

@@ -76,7 +76,7 @@ def main():
         # save model
         checkpoint = {
             "state_dict": model.state_dict(),
-            "optimizer":optimizer.state_dict(),
+            "optimizer": optimizer.state_dict(),
         }
         save_checkpoint(checkpoint)
 
