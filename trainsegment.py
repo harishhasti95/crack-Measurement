@@ -3,7 +3,7 @@ from tqdm import tqdm
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
-from uNet import UNET
+from uNet import UNet
 from utils import get_loaders_segmentation, save_predictions_as_imgs, check_accuracy, load_checkpoint, save_checkpoint
 import argparse
 
@@ -59,11 +59,14 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     
-
-    model = UNET(in_channels=3, out_channels=1).to(device)
+    # model = UNet(in_channels=3, out_channels=1, use_bilinear=False).to(device)
+    model = UNet(n_channels=3, n_classes=1, bilinear=False).to(device)
     loss_fn = nn.BCEWithLogitsLoss()
-    if not args.load:
-        load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
+    
+    if args.load:
+        model = torch.jit.load("models/unetDice.pt")
+        # model.load_state_dict("models/unetDice.pt")
+        # load_checkpoint(torch.load("models/unetDice.pt"), model)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     train_loader, val_loader = get_loaders_segmentation(args.train_files, args.train_masks, args.val_files, args.val_masks, args.height, args.weight, args.batchsize)
 
@@ -71,7 +74,7 @@ def main():
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(args.epochs):
-        # train_fn(train_loader, model, optimizer, loss_fn, scaler, device)
+        train_fn(train_loader, model, optimizer, loss_fn, scaler, device)
         
         # save model
         checkpoint = {

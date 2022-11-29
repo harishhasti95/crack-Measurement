@@ -255,11 +255,16 @@ def check_accuracy(loader, model, device="cuda"):
         f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
     )
     print(f"Dice score: {dice_score/len(loader)}")
-    model.train()
+    
+    with open("testingResultsSegmentation/segmentationResults.txt", "w") as f:
+        f.writelines(f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}")
+        f.writelines(f"Dice score: {dice_score/len(loader)}")
+        f.writelines('*' * 100)
 
 def save_predictions_as_imgs(
     loader, model, folder="saved_images/", device="cuda"
 ):
+    folder_pred = folder + 'pred/'
     model.eval()
     for idx, (x, y) in enumerate(loader):
         x = x.to(device=device)
@@ -267,7 +272,7 @@ def save_predictions_as_imgs(
             preds = torch.sigmoid(model(x))
             preds = (preds > 0.5).float()
         torchvision.utils.save_image(
-            preds, f"{folder}/pred_{idx}.png"
+            preds, f"{folder_pred}/pred_{idx}.png"
         )
         torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
 

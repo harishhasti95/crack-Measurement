@@ -126,8 +126,11 @@ if __name__ == '__main__':
     feature_extract = False
     model_ft, input_size = initialize_model(args.model_name, num_classes, args.feature_extract, use_pretrained=True)
     
+    if os.path.exists('models/resnet'):
+        model_ft = torch.load('models/resnet')
     # Send the model to GPU
     model_ft = model_ft.to(device)
+    
 
     # Gather the parameters to be optimized/updated in this run. If we are
     #  finetuning we will be updating all parameters. However, if we are
