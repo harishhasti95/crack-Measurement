@@ -1,176 +1,132 @@
-# import torch
-# import torch.nn as nn
-# import torchvision.transforms.functional as TF
-
-# # The below block helps to reduce the size by 2 and increase the channels as we go through downgrading
-# class DoubleConvolutionalLayer(nn.Module):
-#     def __init__(self, in_channels, out_channels):
-#         super(DoubleConvolutionalLayer, self).__init__()
-#         self.conv = nn.Sequential(
-#             nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-
-#     def forward(self, x):
-#         return self.conv(x)
-
-# class UNET(nn.Module):
-#     def __init__(
-#             self, in_channels=3, out_channels=1, features=[64, 128, 256, 512],
-#     ):
-#         super(UNET, self).__init__()
-#         self.ups = nn.ModuleList()
-#         self.downs = nn.ModuleList()
-#         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-#         # Down part of UNET
-#         for feature in features:
-#             self.downs.append(DoubleConvolutionalLayer(in_channels, feature))
-#             in_channels = feature
-
-#         # Up part of UNET
-#         for feature in reversed(features):
-#             self.ups.append(
-#                 nn.ConvTranspose2d(
-#                     feature*2, feature, kernel_size=2, stride=2,
-#                 )
-#             )
-#             self.ups.append(DoubleConvolutionalLayer(feature*2, feature))
-
-#         self.bottleneck = DoubleConvolutionalLayer(features[-1], features[-1]*2)
-#         self.final_conv = nn.Conv2d(features[0], out_channels, kernel_size=1)
-
-#     def forward(self, x):
-#         skip_connections = []
-
-#         for down in self.downs:
-#             x = down(x)
-#             skip_connections.append(x)
-#             x = self.pool(x)
-
-#         x = self.bottleneck(x)
-#         skip_connections = skip_connections[::-1]
-
-#         for idx in range(0, len(self.ups), 2):
-#             x = self.ups[idx](x)
-#             skip_connection = skip_connections[idx//2]
-
-#             if x.shape != skip_connection.shape:
-#                 x = TF.resize(x, size=skip_connection.shape[2:])
-
-#             concat_skip = torch.cat((skip_connection, x), dim=1)
-#             x = self.ups[idx+1](concat_skip)
-
-#         return self.final_conv(x)
-
-
+from torch import nn
+from torch.nn import functional as F
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+from torchvision import models
+import torchvision
 
-class UNet(nn.Module):
-    
-    def __init__(self, n_channels, n_classes, bilinear):
-        super(UNet, self).__init__()
-        self.inc = inconv(n_channels, 64)
-        self.down1 = down(64, 128)
-        self.down2 = down(128, 256)
-        self.down3 = down(256, 512)
-        self.down4 = down(512, 512)
-        self.up1 = up(1024, 256, bilinear)
-        self.up2 = up(512, 128, bilinear)
-        self.up3 = up(256, 64, bilinear)
-        self.up4 = up(128, 64, bilinear)
-        self.outc = outconv(64, n_classes)
-    
+input_size = (448, 448)
+
+class Interpolate(nn.Module):
+    def __init__(self, size=None, scale_factor=None, mode='nearest', align_corners=False):
+        super(Interpolate, self).__init__()
+        self.interp = nn.functional.interpolate
+        self.size = size
+        self.mode = mode
+        self.scale_factor = scale_factor
+        self.align_corners = align_corners
+
     def forward(self, x):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
-        x = self.outc(x)
-        return torch.sigmoid(x)
-    
+        x = self.interp(x, size=self.size, scale_factor=self.scale_factor,
+                        mode=self.mode, align_corners=self.align_corners)
+        return x
 
-class double_conv(nn.Module):
-    ''' 2 * (conv -> BN -> ReLU) '''
-    def __init__(self, in_ch, out_ch):
-        super(double_conv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True)
-        )
-    
+def conv3x3(in_, out):
+    return nn.Conv2d(in_, out, 3, padding=1)
+
+
+class ConvRelu(nn.Module):
+    def __init__(self, in_, out):
+        super().__init__()
+        self.conv = conv3x3(in_, out)
+        self.activation = nn.ReLU(inplace=True)
+
     def forward(self, x):
         x = self.conv(x)
+        x = self.activation(x)
         return x
-    
 
-class inconv(nn.Module):
-    ''' double_conv '''
-    def __init__(self, in_ch, out_ch):
-        super(inconv, self).__init__()
-        self.conv = double_conv(in_ch, out_ch)
-    
-    def forward(self, x):
-        x = self.conv(x)
-        return x
-    
 
-class down(nn.Module):
-    ''' maxpool -> double_conv '''
-    def __init__(self, in_ch, out_ch):
-        super(down, self).__init__()
-        self.mpconv = nn.Sequential(
-            nn.MaxPool2d(2),
-            double_conv(in_ch, out_ch)
-        )
-    
-    def forward(self, x):
-        x = self.mpconv(x)
-        return x
-    
+class DecoderBlockV2(nn.Module):
+    def __init__(self, in_channels, middle_channels, out_channels, is_deconv=True):
+        super(DecoderBlockV2, self).__init__()
+        self.in_channels = in_channels
 
-class up(nn.Module):
-    ''' upsample -> conv '''
-    def __init__(self, in_ch, out_ch, bilinear=False):
-        super(up, self).__init__()
-        if bilinear:
-            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        if is_deconv:
+            self.block = nn.Sequential(
+                ConvRelu(in_channels, middle_channels),
+                nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=4, stride=2,
+                                   padding=1),
+                nn.ReLU(inplace=True)
+            )
         else:
-            self.up = nn.ConvTranspose2d(in_ch//2, in_ch//2, 2, stride=2)
-        self.conv = double_conv(in_ch, out_ch)
-    
-    def forward(self, x1, x2):
-        x1 = self.up(x1) # input is CHW
-        diffY = x2.size()[2] - x1.size()[2]
-        diffX = x2.size()[3] - x1.size()[3]
-        x1 = F.pad(x1, (diffX // 2, diffX - diffX//2, diffY // 2, diffY - diffY//2))
-        
-        x = torch.cat([x2, x1], dim=1)
-        x = self.conv(x)
-        return x
-    
-class outconv(nn.Module):
-    ''' conv '''
-    def __init__(self, in_ch, out_ch):
-        super(outconv, self).__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, 1)
-    
+            self.block = nn.Sequential(
+                Interpolate(scale_factor=2, mode='bilinear'),
+                ConvRelu(in_channels, middle_channels),
+                ConvRelu(middle_channels, out_channels),
+            )
+
     def forward(self, x):
-        x = self.conv(x)
-        return x
-    
+        return self.block(x)
+
+class UNet16(nn.Module):
+    def __init__(self, num_classes=1, num_filters=32, pretrained=False, is_deconv=False):
+        super().__init__()
+        self.num_classes = num_classes
+
+        self.pool = nn.MaxPool2d(2, 2)
+
+        self.encoder = torchvision.models.vgg16(pretrained=pretrained).features
+
+        self.relu = nn.ReLU(inplace=True)
+
+        self.conv1 = nn.Sequential(self.encoder[0],
+                                   self.relu,
+                                   self.encoder[2],
+                                   self.relu)
+
+        self.conv2 = nn.Sequential(self.encoder[5],
+                                   self.relu,
+                                   self.encoder[7],
+                                   self.relu)
+
+        self.conv3 = nn.Sequential(self.encoder[10],
+                                   self.relu,
+                                   self.encoder[12],
+                                   self.relu,
+                                   self.encoder[14],
+                                   self.relu)
+
+        self.conv4 = nn.Sequential(self.encoder[17],
+                                   self.relu,
+                                   self.encoder[19],
+                                   self.relu,
+                                   self.encoder[21],
+                                   self.relu)
+
+        self.conv5 = nn.Sequential(self.encoder[24],
+                                   self.relu,
+                                   self.encoder[26],
+                                   self.relu,
+                                   self.encoder[28],
+                                   self.relu)
+
+        self.center = DecoderBlockV2(512, num_filters * 8 * 2, num_filters * 8, is_deconv)
+
+        self.dec5 = DecoderBlockV2(512 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
+        self.dec4 = DecoderBlockV2(512 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
+        self.dec3 = DecoderBlockV2(256 + num_filters * 8, num_filters * 4 * 2, num_filters * 2, is_deconv)
+        self.dec2 = DecoderBlockV2(128 + num_filters * 2, num_filters * 2 * 2, num_filters, is_deconv)
+        self.dec1 = ConvRelu(64 + num_filters, num_filters)
+        self.final = nn.Conv2d(num_filters, num_classes, kernel_size=1)
+
+    def forward(self, x):
+        conv1 = self.conv1(x)
+        conv2 = self.conv2(self.pool(conv1))
+        conv3 = self.conv3(self.pool(conv2))
+        conv4 = self.conv4(self.pool(conv3))
+        conv5 = self.conv5(self.pool(conv4))
+
+        center = self.center(self.pool(conv5))
+
+        dec5 = self.dec5(torch.cat([center, conv5], 1))
+
+        dec4 = self.dec4(torch.cat([dec5, conv4], 1))
+        dec3 = self.dec3(torch.cat([dec4, conv3], 1))
+        dec2 = self.dec2(torch.cat([dec3, conv2], 1))
+        dec1 = self.dec1(torch.cat([dec2, conv1], 1))
+
+        if self.num_classes > 1:
+            x_out = F.log_softmax(self.final(dec1), dim=1)
+        else:
+            x_out = self.final(dec1)
+        return x_out
