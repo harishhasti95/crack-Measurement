@@ -4,6 +4,9 @@ from PIL import Image
 import os
 import torchvision.transforms.functional as TF
 from random import random
+import torch
+from skimage.io import imread
+from torch.utils import data
 
 
 class ClassificationDataset(Dataset):
@@ -30,19 +33,17 @@ class SegmentationDataset(Dataset):
         self.transform_function_mask = transform_function_mask
         self.images = os.listdir(imgages_dir)
         self.masks = os.listdir(masks_dir)
+        self.inputs_dtype = torch.float32
+        self.targets_dtype = torch.long
     def __len__(self):
         return len(self.images)
     def __getitem__(self, i):
         image_dir = os.path.join(self.imgages_dir, self.images[i])
         mask_dir = os.path.join(self.masks_dir, self.masks[i])
-            
         image = np.array(Image.open(image_dir).convert("RGB"))
         mask = np.array(Image.open(mask_dir).convert("L"), dtype=np.float32)
-        mask[mask == 255.0] = 1.0
-
+        
         if self.transform_function_image is not None and self.transform_function_mask is not None:
             image = self.transform_function_image(image=image)["image"]
             mask = self.transform_function_mask(image=mask)["image"]
-            
-
         return image, mask

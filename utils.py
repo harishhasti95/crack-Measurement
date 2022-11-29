@@ -119,24 +119,13 @@ def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, hei
         A.Flip(p=0.5),
         ToTensor(normalize=imagenet_stats)
             ])  
-    
-    # channel_means = [0.485, 0.456, 0.406]
-    # channel_stds  = [0.229, 0.224, 0.225]
-    # train_transform = transforms.Compose([transforms.ToTensor(),
-    #                                  transforms.Normalize(channel_means, channel_stds)])
-
-    # val_transform = transforms.Compose([transforms.ToTensor(),
-    #                                transforms.Normalize(channel_means, channel_stds)])
-
     mask_transform = A.Compose([A.Resize(height=height, width=width), ToTensor()])
     
     train_dataset = SegmentationDataset(train_files, train_masks, train_transform, mask_transform)
     train_loader = get_loader_seg(dataset=train_dataset,batch_size=batch,shuffle=True)
-    # train_loader = get_loader(train_dataset, batch_size=batch, shuffle=True, collate_fn=collate_fn())
 
     val_dataset = SegmentationDataset(val_files, val_masks, val_transform, mask_transform)
     val_loader = get_loader_seg(dataset=train_dataset,batch_size=batch,shuffle=True)
-    # val_loader = get_loader(val_dataset, batch_size=batch, shuffle=True)
     
     return train_loader, val_loader
 

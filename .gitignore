@@ -5,3 +5,5 @@ dataset.txt
 models/
 ___pycache___/
 dataloader/___pycache___/
+saved_images/
+my_checkpoint.pth.tar
