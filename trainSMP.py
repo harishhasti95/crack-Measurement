@@ -20,7 +20,6 @@ from tqdm import tqdm_notebook as tqdm
 import concurrent.futures
 # warning print supression
 warnings.filterwarnings("ignore")
-
 # *****************to reproduce same results fixing the seed and hash*******************
 seed = 42
 random.seed(seed)
