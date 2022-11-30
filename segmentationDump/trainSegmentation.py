@@ -3,7 +3,7 @@ from tqdm import tqdm
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
-from uNet import UNet16
+from segmentationDump.uNet import UNet16
 from utils import get_loaders_segmentation, save_predictions_as_imgs, check_accuracy, load_checkpoint, save_checkpoint
 import argparse
 

@@ -3,7 +3,7 @@ import tqdm
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
-from uNet import UNet16
+from segmentationDump.uNet import UNet16
 from utils import get_loaders_segmentation, calc_crack_pixel_weight, get_loaders_smp
 import argparse
 from torch.autograd import Variable

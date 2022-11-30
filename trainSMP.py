@@ -1,9 +1,5 @@
-# visualization library
-import cv2
-from matplotlib import pyplot as plt
 # data storing library
 import numpy as np
-import pandas as pd
 # torch libraries
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch
@@ -11,22 +7,16 @@ import torch.nn as nn
 from torch.nn import functional as F
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
-from torch.utils.data import DataLoader, Dataset, sampler
 # architecture and data split library
 from utils import get_loaders_smp
-from sklearn.model_selection import train_test_split
 import segmentation_models_pytorch as smp
-# augmenation library
-from albumentations import (HorizontalFlip, ShiftScaleRotate, Normalize, Resize, Compose, GaussNoise)
-from albumentations.pytorch import ToTensor
 # others
 import os
-import pdb
+import argparse
 import time
 import warnings
 import random
 from tqdm import tqdm_notebook as tqdm
-import concurrent.futures
 import concurrent.futures
 # warning print supression
 warnings.filterwarnings("ignore")
@@ -40,15 +30,11 @@ torch.cuda.manual_seed(seed)
 torch.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
 
-train_loader, val_loader = get_loaders_smp('dataSegmentation/trainImage', 'dataSegmentation/trainMask', 'dataSegmentation/valImage', 'dataSegmentation/valMask', 1)
-
 
 def dice_score(pred, targs):
     pred = (pred>0).float()
     return 2. * (pred*targs).sum() / (pred+targs).sum()
 
-''' initialize a empty list when Scores is called, append the list with dice scores
-for every batch, at the end of epoch calculates mean of the dice scores'''
 class Scores:
     def __init__(self, phase, epoch):
         self.base_dice_scores = []
@@ -63,91 +49,113 @@ class Scores:
         return dice
 
 def epoch_log(epoch_loss, measure):
-    '''logging the metrics at the end of an epoch'''
     dices= measure.get_metrics()    
     dice= dices                       
     print("Loss: %0.4f |dice: %0.4f" % (epoch_loss, dice))
     return dice
 
+def forward(model, criterion, input, mask, device):
+    input=input.to(device)
+    mask=mask.to(device)
+    predicted_mask=model(input)
+    loss=criterion(predicted_mask,mask)
+    return loss, predicted_mask
 
-
-class Trainer(object):
-    def __init__(self,model):
-        self.num_workers=4
-        self.batch_size={'train':1, 'val':1}
-        self.accumulation_steps=4//self.batch_size['train']
-        self.lr=5e-4
-        self.num_epochs=10
-        self.phases=['train','val']
-        self.best_loss=float('inf')
-        self.device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        torch.set_default_tensor_type("torch.cuda.FloatTensor")
-        self.net=model.to(self.device)
-        cudnn.benchmark= True
-        self.criterion=torch.nn.BCEWithLogitsLoss()
-        self.optimizer=optim.Adam(self.net.parameters(),lr=self.lr)
-        self.scheduler=ReduceLROnPlateau(self.optimizer,mode='min',patience=3, verbose=True)
-        self.dataloaders={'train': train_loader, 'val': val_loader}
-
-        self.losses={phase:[] for phase in self.phases}
-        self.dice_score={phase:[] for phase in self.phases}
-
-    def forward(self, inp_images, tar_mask):
-        inp_images=inp_images.to(self.device)
-        tar_mask=tar_mask.to(self.device)
-        pred_mask=self.net(inp_images)
-        loss=self.criterion(pred_mask,tar_mask)
-        return loss, pred_mask
-
-    def iterate(self, epoch, phase):
+def iterate(args, model, epoch, phase, dataloaders, optimizer, criterion, device, accumulation_steps, losses, dice_scores):
         measure=Scores(phase, epoch)
         start=time.strftime("%H:%M:%S")
         print (f"Starting epoch: {epoch} | phase:{phase} | 🙊':{start}")
-        batch_size=self.batch_size[phase]
-        self.net.train(phase=="train")
-        dataloader=self.dataloaders[phase]
+        model.train(phase=="train")
+        dataloader=dataloaders[phase]
         running_loss=0.0
         total_batches=len(dataloader)
-        self.optimizer.zero_grad()
+        optimizer.zero_grad()
         for itr,batch in enumerate(dataloader):
             images,mask_target=batch
-            loss, pred_mask=self.forward(images,mask_target)
-            loss=loss/self.accumulation_steps
+            loss, pred_mask=forward(model, criterion, images,mask_target, device)
+            loss=loss/accumulation_steps
             if phase=='train':
                 loss.backward()
-                if (itr+1) % self.accumulation_steps ==0:
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
+                if (itr+1) % accumulation_steps ==0:
+                    optimizer.step()
+                    optimizer.zero_grad()
             running_loss+=loss.item()
             pred_mask=pred_mask.detach().cpu()
             measure.update(mask_target,pred_mask)
-        epoch_loss=(running_loss*self.accumulation_steps)/total_batches
+        epoch_loss=(running_loss*accumulation_steps)/total_batches
         dice=epoch_log(epoch_loss, measure)
-        self.losses[phase].append(epoch_loss)
-        self.dice_score[phase].append(dice)
+        losses[phase].append(epoch_loss)
+        dice_scores[phase].append(dice)
         torch.cuda.empty_cache()
         return epoch_loss
-    def start(self):
-        for epoch in range (self.num_epochs):
-            self.iterate(epoch,"train")
-            state = {
-                "epoch": epoch,
-                "best_loss": self.best_loss,
-                "state_dict": self.net.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-            }
-            with torch.no_grad():
-                val_loss=self.iterate(epoch,"val")
-                self.scheduler.step(val_loss)
-            if val_loss < self.best_loss:
-                print("******** New optimal found, saving state ********")
-                state["best_loss"] = self.best_loss = val_loss
-                torch.save(state, "./model_office.pth")
-            print ()
 
+def main():
+    parser = argparse.ArgumentParser(description='PyTorch Crack Classification')
+    parser.add_argument('--load', type=bool, default=True, metavar='N',
+                        help='Load Pretrained model from checkpoint')
+    parser.add_argument('--lr', type=float, default=5e-4, metavar='N',
+                        help='Learning rate for training (default: 5e-4)')
+    parser.add_argument('--batch_size', type=int, default=1, metavar='N',
+                        help='input batch size for training (default: 1)')
+    parser.add_argument('--num_epochs', type=int, default=5, metavar='N',
+                        help='number of epochs to train (default: 14)')
+    parser.add_argument('--height', type=int, default=256, metavar='N',
+                        help='Height of the image to resize (default: 240)')
+    parser.add_argument('--width', type=int, default=256, metavar='N',
+                        help='Width of the image to resize (default: 240)')
+    parser.add_argument('--train_files', type=str, default='dataSegmentation/trainImage', metavar='N',
+                        help='Path for training images')
+    parser.add_argument('--train_masks', type=str, default='dataSegmentation/trainMask', metavar='N',
+                        help='Path for training masks')
+    parser.add_argument('--val_files', type=str, default='dataSegmentation/valImage', metavar='N',
+                        help='Path for validation images')
+    parser.add_argument('--val_masks', type=str, default='dataSegmentation/valMask', metavar='N',
+                        help='Path for validation masks')
+    parser.add_argument('--feature_extract', type=bool, default=False, metavar='N',
+                        help='finetuning the last layer')
+    parser.add_argument('--model_path', default='models/',
+                        help='For Saving the current Model')
+    args = parser.parse_args()
+    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
 
+    model = smp.Unet("resnet18", encoder_weights="imagenet", classes=1, activation=None)
+    model.to(device)
+    torch.set_default_tensor_type("torch.cuda.FloatTensor")
+    cudnn.benchmark= True
+    if os.path.exists("model_office.pth"):
+        temp = torch.load("model_office.pth")
+        model.load_state_dict(temp['state_dict'])
+    criterion=torch.nn.BCEWithLogitsLoss()
+    optimizer=optim.Adam(model.parameters(),lr=args.lr)
+    scheduler=ReduceLROnPlateau(optimizer,mode='min',patience=3, verbose=True)
+    train_loader, val_loader = get_loaders_smp(args.train_files, args.train_masks, 
+                                            args.val_files, args.val_masks, args.batch_size, args.height, args.width)
 
-model = smp.Unet("resnet18", encoder_weights="imagenet", classes=1, activation=None)
-
-temp = Trainer(model)
-temp.start()
+    best_loss=float('inf')
+    phases=['train','val']
+    losses={phase:[] for phase in phases}
+    dice_scores={phase:[] for phase in phases}
+    dataloaders = {'train': train_loader, 'val': val_loader}
+    accumulation_steps=4//args.batch_size
+    
+    for epoch in range (args.num_epochs):
+        iterate(args, model, epoch, phases[0], dataloaders, optimizer, criterion, device, accumulation_steps, losses, dice_scores)
+        state = {
+            "epoch": epoch,
+            "best_loss": best_loss,
+            "state_dict": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+        }
+        with torch.no_grad():
+            val_loss=iterate(args, model, epoch, phases[1], dataloaders, optimizer, criterion, device, accumulation_steps, losses, dice_scores)
+            scheduler.step(val_loss)
+        if val_loss < best_loss:
+            print("******** New optimal found, saving state ********")
+            state["best_loss"] = best_loss = val_loss
+            torch.save(state, "./model_office.pth")
+        print ()
+    
+    
+if __name__ == "__main__":
+    main()

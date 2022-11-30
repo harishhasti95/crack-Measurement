@@ -156,13 +156,13 @@ def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, hei
     
     return train_loader, val_loader
 
-def get_loaders_smp(train_files, train_masks, val_files, val_masks, batch):
+def get_loaders_smp(train_files, train_masks, val_files, val_masks, batch, height, width):
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
-    train_dataset = SMPDataset(train_files, train_masks, mean, std, 'train')
+    train_dataset = SMPDataset(train_files, train_masks, mean, std, 'train', height, width)
     train_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
 
-    val_dataset = SMPDataset(val_files, val_masks, mean, std, 'val')
+    val_dataset = SMPDataset(val_files, val_masks, mean, std, 'val', height, width)
     val_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
     
     return train_loader, val_loader

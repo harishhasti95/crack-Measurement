@@ -1,13 +1,10 @@
 data/
 dataClassification/
 dataSegmentation/
-dataset.txt
 models/
-___pycache___/
-dataloader/___pycache___/
 saved_images/
-my_checkpoint.pth.tar
 testing/
 testingResultsSegmentation/
-trainSegment.py
-trainingSeg.py
+dataset.txt
+my_checkpoint.pth.tar
+model_office.pth

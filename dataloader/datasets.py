@@ -50,23 +50,25 @@ class SegmentationDataset(Dataset):
 
 from albumentations import (HorizontalFlip, ShiftScaleRotate, Normalize, Resize, Compose, GaussNoise)
 from albumentations.pytorch import ToTensor
-def get_transform(phase,mean,std):
+def get_transform(phase,mean,std, height, width):
     list_trans=[]
     if phase=='train':
         list_trans.extend([HorizontalFlip(p=0.5)])
-    list_trans.extend([Resize(height=256, width=256), Normalize(mean=mean,std=std, p=1), ToTensor()])  #normalizing the data & then converting to tensors
+    list_trans.extend([Resize(height=height, width=width), Normalize(mean=mean,std=std, p=1), ToTensor()])  #normalizing the data & then converting to tensors
     list_trans=Compose(list_trans)
     return list_trans
 
 class SMPDataset(Dataset):
-    def __init__(self, imgages_dir, masks_dir, mean, std, phase):
+    def __init__(self, imgages_dir, masks_dir, mean, std, phase, height, width):
         self.imgages_dir = imgages_dir
         self.masks_dir = masks_dir
         self.images = os.listdir(imgages_dir)
         self.masks = os.listdir(masks_dir)
         self.inputs_dtype = torch.float32
         self.targets_dtype = torch.long
-        self.trasnform=get_transform(phase,mean,std)
+        self.height = height
+        self.width = width
+        self.trasnform=get_transform(phase,mean,std, height, width)
     def __getitem__(self, i):
         image_dir = os.path.join(self.imgages_dir, self.images[i])
         mask_dir = os.path.join(self.masks_dir, self.masks[i])
