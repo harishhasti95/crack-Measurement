@@ -3,7 +3,7 @@ from torch.nn import functional as F
 import torch
 from torchvision import models
 import torchvision
-from torchvision.models import VGG16_Weights
+from torchvision.models import VGG16_Weights, ResNet50_Weights
 
 input_size = (448, 448)
 
@@ -67,6 +67,7 @@ class UNet16(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
 
         self.encoder = torchvision.models.vgg16(weights=("pretrained", VGG16_Weights.IMAGENET1K_V1)).features
+        
 
         self.relu = nn.ReLU(inplace=True)
 
@@ -125,9 +126,6 @@ class UNet16(nn.Module):
         dec3 = self.dec3(torch.cat([dec4, conv3], 1))
         dec2 = self.dec2(torch.cat([dec3, conv2], 1))
         dec1 = self.dec1(torch.cat([dec2, conv1], 1))
-
-        if self.num_classes >= 1:
-            x_out = F.log_softmax(self.final(dec1), dim=1)
-        else:
-            x_out = self.final(dec1)
+        
+        x_out = torch.nn.functional.softmax(self.final(dec1))
         return x_out

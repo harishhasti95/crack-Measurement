@@ -12,3 +12,7 @@ def get_loader_seg(dataset, batch_size, shuffle):
 
 def get_loader(dataset, batch_size, shuffle):
     return torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
+
+
+def get_loader_smp(dataset, batch_size, shuffle):
+    return torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, generator=torch.Generator(device='cuda'))

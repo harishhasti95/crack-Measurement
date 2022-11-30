@@ -8,8 +8,8 @@ from torch import nn
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, models
-from dataloader.datasets import ClassificationDataset, SegmentationDataset
-from dataloader.dataloader import get_loader, get_loader_seg
+from dataloader.datasets import ClassificationDataset, SegmentationDataset, SMPDataset
+from dataloader.dataloader import get_loader, get_loader_seg, get_loader_smp
 from PIL import Image
 from numpy import asarray
 import pickle
@@ -18,7 +18,6 @@ from albumentations.pytorch import ToTensorV2
 from albumentations.pytorch.transforms import ToTensor
 import scipy.ndimage as ndimage
 from pathlib import Path
-
 
 def prepare_train_test_val(dir):
     if 'dataset.txt' in os.listdir(os.getcwd()):
@@ -83,7 +82,6 @@ def file_loader_for_testing(file_name):
 
     return img
 
-
 def file_loader_for_testing_segmentation(file_name):
     img = Image.open(file_name)
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
@@ -101,7 +99,6 @@ def file_loader_for_testing_segmentation(file_name):
     img = img.reshape(1, temp[0], temp[1], temp[2])
 
     return img
-        
 
 def get_loaders(X_train, Y_train, X_val, Y_val, batch):
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
@@ -125,30 +122,30 @@ def get_loaders(X_train, Y_train, X_val, Y_val, batch):
 
 def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, height, width, batch):
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
-    # train_transform = A.Compose([
-    #     A.Resize(height=height, width=width),
-    #     A.Cutout(p=0.5),
-    #     A.RandomRotate90(p=0.5),
-    #     A.Flip(p=0.5),
-    #     ToTensor(normalize=imagenet_stats)
-    #         ])
-        
-    # val_transform = A.Compose([
-    #     A.Resize(height=height, width=width),
-    #     A.Cutout(p=0.5),
-    #     A.RandomRotate90(p=0.5),
-    #     A.Flip(p=0.5),
-    #     ToTensor(normalize=imagenet_stats)
-    #         ])  
     train_transform = A.Compose([
         A.Resize(height=height, width=width),
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
         ToTensor(normalize=imagenet_stats)
             ])
         
     val_transform = A.Compose([
         A.Resize(height=height, width=width),
+        A.Cutout(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.Flip(p=0.5),
         ToTensor(normalize=imagenet_stats)
             ])  
+    # train_transform = A.Compose([
+    #     A.Resize(height=height, width=width),
+    #     ToTensor(normalize=imagenet_stats)
+    #         ])
+        
+    # val_transform = A.Compose([
+    #     A.Resize(height=height, width=width),
+    #     ToTensor(normalize=imagenet_stats)
+    #         ])  
     mask_transform = A.Compose([A.Resize(height=height, width=width), ToTensor()])
     
     train_dataset = SegmentationDataset(train_files, train_masks, train_transform, mask_transform)
@@ -156,6 +153,17 @@ def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, hei
 
     val_dataset = SegmentationDataset(val_files, val_masks, val_transform, mask_transform)
     val_loader = get_loader_seg(dataset=train_dataset,batch_size=batch,shuffle=True)
+    
+    return train_loader, val_loader
+
+def get_loaders_smp(train_files, train_masks, val_files, val_masks, batch):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    train_dataset = SMPDataset(train_files, train_masks, mean, std, 'train')
+    train_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
+
+    val_dataset = SMPDataset(val_files, val_masks, mean, std, 'val')
+    val_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
     
     return train_loader, val_loader
 
@@ -235,7 +243,6 @@ def set_parameter_requires_grad(model, feature_extracting):
         for param in model.parameters():
             param.requires_grad = False
             
-            
 def save_checkpoint(state, filename="my_checkpoint.pth.tar"):
     print("=> Saving checkpoint")
     torch.save(state, filename)
@@ -287,8 +294,6 @@ def save_predictions_as_imgs(
         torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
 
     model.train()
-
-
 
 def calc_crack_pixel_weight(mask_dir):
     avg_w = 0.0

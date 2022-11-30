@@ -10,3 +10,4 @@ my_checkpoint.pth.tar
 testing/
 testingResultsSegmentation/
 trainSegment.py
+trainingSeg.py
