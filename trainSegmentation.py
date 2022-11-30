@@ -7,7 +7,7 @@ from uNet import UNet16
 from utils import get_loaders_segmentation, save_predictions_as_imgs, check_accuracy, load_checkpoint, save_checkpoint
 import argparse
 
-def train_fn(loader, model, optimizer, loss_fn, scaler, device):
+def train_fn(loader, model, optimizer, loss_fn, scaler, device, val_loader, metrics, epoch):
     loop = tqdm(loader)
 
     for batch_idx, (data, targets) in enumerate(loop):
@@ -27,11 +27,24 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device):
 
         # update tqdm loop
         loop.set_postfix(loss=loss.item())
+    # save model
+    checkpoint = {
+        "state_dict": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+    }
+    
+    # check accuracy
+    epoch_acc, epoch_dice = check_accuracy(val_loader, model, device=device)
+    if epoch_acc > metrics.acc:
+        metrics.acc = epoch_acc
+        metrics.dice = epoch_dice
+        save_checkpoint(checkpoint)
+
 
 
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Crack Classification')
-    parser.add_argument('--load', type=bool, default=False, metavar='N',
+    parser.add_argument('--load', type=bool, default=True, metavar='N',
                         help='Load Pretrained model from checkpoint')
     parser.add_argument('--lr', type=float, default=1e-4, metavar='N',
                         help='Learning rate for training (default: 128)')
@@ -62,35 +75,27 @@ def main():
     model.eval().to(device)
     
     loss_fn = nn.BCEWithLogitsLoss().to('cuda')
+    train_loader, val_loader = get_loaders_segmentation(args.train_files, args.train_masks, args.val_files, args.val_masks, args.height, args.weight, args.batchsize) 
+    
+    
     
     if args.load:
-        model = torch.jit.load('models\model_unet_vgg_16_best.pt')
+        load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
+        current_accuracy, current_dice = check_accuracy(val_loader, model, device=device)
+        metrics = {'acc': current_accuracy, 'dice':current_dice}
     # optimizer = optim.Adam(model.parameters(), lr=args.lr)
     
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=0.9,
                                 weight_decay=1e-4)
-    
-    
-    train_loader, val_loader = get_loaders_segmentation(args.train_files, args.train_masks, args.val_files, args.val_masks, args.height, args.weight, args.batchsize)
 
     # check_accuracy(val_loader, model, device=device)
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(args.epochs):
-        train_fn(train_loader, model, optimizer, loss_fn, scaler, device)
+        train_fn(train_loader, model, optimizer, loss_fn, scaler, device, val_loader, metrics, epoch)
         
-        # save model
-        checkpoint = {
-            "state_dict": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-        }
-        save_checkpoint(checkpoint)
-
-        # check accuracy
-        check_accuracy(val_loader, model, device=device)
-
         # print some examples to a folder
         save_predictions_as_imgs(
             val_loader, model, folder="saved_images/", device=device

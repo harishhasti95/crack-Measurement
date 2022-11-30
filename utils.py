@@ -16,6 +16,8 @@ import pickle
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from albumentations.pytorch.transforms import ToTensor
+import scipy.ndimage as ndimage
+from pathlib import Path
 
 
 def prepare_train_test_val(dir):
@@ -123,19 +125,28 @@ def get_loaders(X_train, Y_train, X_val, Y_val, batch):
 
 def get_loaders_segmentation(train_files, train_masks, val_files, val_masks, height, width, batch):
     imagenet_stats = {'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225]}
+    # train_transform = A.Compose([
+    #     A.Resize(height=height, width=width),
+    #     A.Cutout(p=0.5),
+    #     A.RandomRotate90(p=0.5),
+    #     A.Flip(p=0.5),
+    #     ToTensor(normalize=imagenet_stats)
+    #         ])
+        
+    # val_transform = A.Compose([
+    #     A.Resize(height=height, width=width),
+    #     A.Cutout(p=0.5),
+    #     A.RandomRotate90(p=0.5),
+    #     A.Flip(p=0.5),
+    #     ToTensor(normalize=imagenet_stats)
+    #         ])  
     train_transform = A.Compose([
         A.Resize(height=height, width=width),
-        A.Cutout(p=0.5),
-        A.RandomRotate90(p=0.5),
-        A.Flip(p=0.5),
         ToTensor(normalize=imagenet_stats)
             ])
         
     val_transform = A.Compose([
         A.Resize(height=height, width=width),
-        A.Cutout(p=0.5),
-        A.RandomRotate90(p=0.5),
-        A.Flip(p=0.5),
         ToTensor(normalize=imagenet_stats)
             ])  
     mask_transform = A.Compose([A.Resize(height=height, width=width), ToTensor()])
@@ -247,9 +258,7 @@ def check_accuracy(loader, model, device="cuda"):
             preds = (preds > 0.5).float()
             num_correct += (preds == y).sum()
             num_pixels += torch.numel(preds)
-            dice_score += (2 * (preds * y).sum()) / (
-                (preds + y).sum() + 1e-8
-            )
+            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
 
     print(
         f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
@@ -260,6 +269,7 @@ def check_accuracy(loader, model, device="cuda"):
         f.writelines(f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}")
         f.writelines(f"Dice score: {dice_score/len(loader)}")
         f.writelines('*' * 100)
+    return (num_correct/num_pixels)*100, dice_score/len(loader)
 
 def save_predictions_as_imgs(
     loader, model, folder="saved_images/", device="cuda"
@@ -277,3 +287,19 @@ def save_predictions_as_imgs(
         torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
 
     model.train()
+
+
+
+def calc_crack_pixel_weight(mask_dir):
+    avg_w = 0.0
+    n_files = 0
+    for path in Path(mask_dir).glob('*.*'):
+        n_files += 1
+        m = ndimage.imread(path)
+        ncrack = np.sum((m > 0)[:])
+        w = float(ncrack)/(m.shape[0]*m.shape[1])
+        avg_w = avg_w + (1-w)
+
+    avg_w /= float(n_files)
+
+    return avg_w / (1.0 - avg_w)

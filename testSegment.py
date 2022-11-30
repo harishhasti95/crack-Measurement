@@ -11,17 +11,19 @@ if __name__ == '__main__':
     
     # model = UNET(in_channels=3, out_channels=1).to(device)
     # load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
-    model = UNet16(pretrained=True)
+    model = UNet16()
     model.eval().to(device)
     
-    load_checkpoint(torch.load("my_checkpoint.pth.tar"), model)
+    # load_checkpoint(torch.load("models\model_best.pt"), model)
+    temp = torch.load("models\model_best.pt")
+    model.load_state_dict(temp['model'])
     
     for image_name in os.listdir(args.testing_dir):
         test_file = args.testing_dir + image_name
         test_file_input = file_loader_for_testing_segmentation(test_file)
         with torch.no_grad():
             preds = torch.sigmoid(model(test_file_input))
-            preds = (preds > 0.45).float()
+            preds = (preds > 0.5).float()
         torchvision.utils.save_image(
             preds, f"{args.testing_dir}/${image_name}_predicted.png"
         )

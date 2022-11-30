@@ -42,7 +42,7 @@ class SegmentationDataset(Dataset):
         mask_dir = os.path.join(self.masks_dir, self.masks[i])
         image = np.array(Image.open(image_dir).convert("RGB"))
         mask = np.array(Image.open(mask_dir).convert("L"), dtype=np.float32)
-        
+        mask[mask > 50] = 1.0
         if self.transform_function_image is not None and self.transform_function_mask is not None:
             image = self.transform_function_image(image=image)["image"]
             mask = self.transform_function_mask(image=mask)["image"]

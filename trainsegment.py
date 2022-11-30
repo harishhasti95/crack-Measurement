@@ -4,7 +4,7 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from uNet import UNet16
-from utils import get_loaders_segmentation
+from utils import get_loaders_segmentation, calc_crack_pixel_weight
 import argparse
 from torch.autograd import Variable
 import scipy.ndimage as ndimage
@@ -55,9 +55,6 @@ def train(train_loader, model, criterion, optimizer, validation, args, valid_loa
     latest_model_path = find_latest_model_path(args.model_dir)
 
     best_model_path = os.path.join(*[args.model_dir, 'model_best.pt'])
-    
-    print(latest_model_path)
-    print(best_model_path)
     if latest_model_path is not None:
         state = torch.load(best_model_path)
         epoch = state['epoch']
@@ -90,6 +87,9 @@ def train(train_loader, model, criterion, optimizer, validation, args, valid_loa
 
         model.train()
         for i, (input, target) in enumerate(train_loader):
+            # print(input)
+            # print(target)
+            
             input_var  = Variable(input).cuda()
             target_var = Variable(target).cuda()
 
@@ -97,12 +97,16 @@ def train(train_loader, model, criterion, optimizer, validation, args, valid_loa
 
             masks_probs_flat = masks_pred.view(-1)
             true_masks_flat  = target_var.view(-1)
+            # print(masks_probs_flat)
+            # print(true_masks_flat)
 
             loss = criterion(masks_probs_flat, true_masks_flat)
+            # print('Loss in train', loss)
+            
             losses.update(loss)
             tq.set_postfix(loss='{:.5f}'.format(losses.avg))
             tq.update(args.batch_size)
-
+            
             # compute gradient and do SGD step
             optimizer.zero_grad()
             loss.backward()
@@ -141,12 +145,20 @@ def validate(model, val_loader, criterion):
         for i, (input, target) in enumerate(val_loader):
             input_var = Variable(input).cuda()
             target_var = Variable(target).cuda()
+            
+            
+            masks_pred = model(input_var)
 
-            output = model(input_var)
-            temp = target_var.size()
-            target_var = target_var.reshape(temp[0], 1, temp[1], temp[2])
-            loss = criterion(output, target_var)
-            print('Loss', loss)
+            masks_probs_flat = masks_pred.view(-1)
+            true_masks_flat  = target_var.view(-1)
+            loss = criterion(masks_probs_flat, true_masks_flat)
+
+            # output = model(input_var)
+            # temp = target_var.size()
+            # target_var = target_var.reshape(temp[0], 1, temp[1], temp[2])
+            # loss = criterion(output + 1e-10, target_var)
+            
+            
             losses.update(loss.item(), input_var.size(0))
 
     return {'valid_loss': losses.avg}
@@ -156,19 +168,7 @@ def save_check_point(state, is_best, file_name = 'checkpoint.pth.tar'):
     if is_best:
         shutil.copy(file_name, 'model_best.pth.tar')
 
-def calc_crack_pixel_weight(mask_dir):
-    avg_w = 0.0
-    n_files = 0
-    for path in Path(mask_dir).glob('*.*'):
-        n_files += 1
-        m = ndimage.imread(path)
-        ncrack = np.sum((m > 0)[:])
-        w = float(ncrack)/(m.shape[0]*m.shape[1])
-        avg_w = avg_w + (1-w)
 
-    avg_w /= float(n_files)
-
-    return avg_w / (1.0 - avg_w)
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Crack Segmentation')
     parser.add_argument('--load', type=bool, default=False, metavar='N',
@@ -177,9 +177,9 @@ def main():
                         help='Learning rate for training (default: 128)')
     parser.add_argument('--batch_size', type=int, default=2, metavar='N',
                         help='input batch size for training (default: 1)')
-    parser.add_argument('--height', type=int, default=256, metavar='N',
+    parser.add_argument('--height', type=int, default=64, metavar='N',
                         help='Height of the image to resize (default: 240)')
-    parser.add_argument('--weight', type=int, default=256, metavar='N',
+    parser.add_argument('--weight', type=int, default=64, metavar='N',
                         help='Width of the image to resize (default: 240)')
     parser.add_argument('--train_files', type=str, default='dataSegmentation/trainImage', metavar='N',
                         help='Path for training images')
@@ -192,19 +192,20 @@ def main():
     parser.add_argument('--feature_extract', type=bool, default=False, metavar='N',
                         help='finetuning the last layer')
     parser.add_argument('--model_dir', default='models/', help='For Saving the current Model')
-    parser.add_argument('-n_epoch', default=20, type=int, metavar='N', help='number of total epochs to run')
-    parser.add_argument('-lr', default=0.001, type=float, metavar='LR', help='initial learning rate')
+    parser.add_argument('-n_epoch', default=2, type=int, metavar='N', help='number of total epochs to run')
+    parser.add_argument('-lr', default=0.0001, type=float, metavar='LR', help='initial learning rate')
     parser.add_argument('-momentum', default=0.9, type=float, metavar='M', help='momentum')
     parser.add_argument('-print_freq', default=20, type=int, metavar='N', help='print frequency (default: 10)')
     parser.add_argument('-weight_decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)')
     args = parser.parse_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = UNet16(pretrained=True)
+    model = UNet16()
     model.eval().to(device)
-
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    
+    # optimizer = torch.optim.SGD(model.parameters(), args.lr,
+    #                             momentum=args.momentum,
+    #                             weight_decay=args.weight_decay)
     criterion = nn.BCEWithLogitsLoss().to('cuda')
 
     train_loader, valid_loader = get_loaders_segmentation(args.train_files, args.train_masks, args.val_files, args.val_masks, args.height, args.weight, args.batch_size)
