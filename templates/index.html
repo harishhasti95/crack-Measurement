@@ -31,13 +31,13 @@
 
 
 {% if originalVideo %}
-<video controls width="640" height="400">
+<video controls autoplay loop width="640" height="400">
     <source src={{originalVideo}} type="video/mp4">
 </video>
 {% endif %}
 
 {% if maskVideo %}
-<video controls width="640" height="400">
+<video controls autoplay loop width="640" height="400">
     <source src={{maskVideo}} type="video/mp4">
 </video>
 

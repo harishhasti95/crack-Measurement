@@ -125,10 +125,9 @@ def predict():
         preds = model_predict(image_path)
         
         mask_pred = pred_path + image.filename
+        
         torchvision.utils.save_image(preds, mask_pred)
-        import gc
-        torch.cuda.empty_cache()
-        gc.collect()
+        
         return render_template('index.html', original = image_path, mask = mask_pred)
 
 
@@ -184,7 +183,6 @@ def predictVideo():
         convert_frames_to_video(path_in, path_out, 100, video_path)
     
     return render_template('index.html', originalVideo = video_path, maskVideo = path_out)
-
 
 if __name__ == '__main__':
     app.run(debug=True)
