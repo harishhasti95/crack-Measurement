@@ -185,5 +185,6 @@ def predictVideo():
     
     return render_template('index.html', originalVideo = video_path, maskVideo = path_out)
 
+
 if __name__ == '__main__':
     app.run(debug=True)
