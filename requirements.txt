@@ -1,0 +1,9 @@
+albumentations==0.5.2
+Flask==2.2.2
+gevent==22.10.2
+numpy==1.23.4
+Pillow==9.3.0
+segmentation_models_pytorch==0.3.0
+torch==1.13.0
+torchvision==0.14.0
+Werkzeug==2.2.2
