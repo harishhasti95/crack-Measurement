@@ -8,4 +8,7 @@ testingResultsSegmentation/
 dataset.txt
 my_checkpoint.pth.tar
 model_office.pth
+model_office_vgg.pth
 vecteezy_white-old-building-wall-with-a-crack_1623873.mp4
+crack_segmentation_dataset/
+big_data/

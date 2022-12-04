@@ -65,7 +65,7 @@ def forward(model, criterion, input, mask, device):
 def iterate(args, model, epoch, phase, dataloaders, optimizer, criterion, device, accumulation_steps, losses, dice_scores):
         measure=Scores(phase, epoch)
         start=time.strftime("%H:%M:%S")
-        print (f"Starting epoch: {epoch} | phase:{phase} | 🙊':{start}")
+        print (f"Starting epoch: {epoch} | phase:{phase} | ':{start}")
         model.train(phase=="train")
         dataloader=dataloaders[phase]
         running_loss=0.0

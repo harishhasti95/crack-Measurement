@@ -48,13 +48,21 @@ class SegmentationDataset(Dataset):
             mask = self.transform_function_mask(image=mask)["image"]
         return image, mask
 
-from albumentations import (HorizontalFlip, ShiftScaleRotate, Normalize, Resize, Compose, GaussNoise)
+from albumentations import (HueSaturationValue, HorizontalFlip, GridDistortion, RandomBrightnessContrast, Normalize, Resize, Compose, GaussNoise, RandomRotate90, Cutout)
 from albumentations.pytorch import ToTensor
 def get_transform(phase,mean,std, height, width):
+    
     list_trans=[]
     if phase=='train':
         list_trans.extend([HorizontalFlip(p=0.5)])
-    list_trans.extend([Resize(height=height, width=width), Normalize(mean=mean,std=std, p=1), ToTensor()])  #normalizing the data & then converting to tensors
+    list_trans.extend([Resize(height=height, width=width), 
+                       Normalize(mean=mean,std=std, p=1), 
+                       RandomRotate90(),
+                       Cutout(),
+                       RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
+                       GridDistortion(p=0.3),
+                       HueSaturationValue(p=0.3),
+                       ToTensor()])  #normalizing the data & then converting to tensors
     list_trans=Compose(list_trans)
     return list_trans
 

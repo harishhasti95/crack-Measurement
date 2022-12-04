@@ -160,7 +160,7 @@ def get_loaders_smp(train_files, train_masks, val_files, val_masks, batch, heigh
     train_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
 
     val_dataset = SMPDataset(val_files, val_masks, mean, std, 'val', height, width)
-    val_loader = get_loader_smp(dataset=train_dataset,batch_size=batch,shuffle=True)
+    val_loader = get_loader_smp(dataset=val_dataset,batch_size=batch,shuffle=True)
     
     return train_loader, val_loader
 
